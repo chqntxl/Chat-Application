@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Cute Chat</title>
+    <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1.5.1/dist/sockjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/stompjs@2.3.3/lib/stomp.min.js"></script>
+    <style>
+        body {
+            background: linear-gradient(135deg, #ff77ff 0%, #00bcd4 100%); /* Pink to Cyan */
+            font-family: 'Comic Sans MS', cursive, sans-serif;
+            color: black;
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        #chat-box {
+            margin-top: 20px;
+            background: linear-gradient(135deg, #ffd1ff 0%, #a1c4fd 100%);
+            border-radius: 20px;
+            width: 95%; /* Increased width */
+            max-width: 1000px; /* Wider max-width */
+            height: 90vh; /* Increased height */
+            overflow-y: auto;
+            padding: 20px;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.2);
+            display: flex;
+            flex-direction: column;
+        }
+        .message {
+            background: rgba(255, 255, 255, 0.9);
+            padding: 10px 15px;
+            margin-bottom: 10px;
+            border-radius: 20px;
+            max-width: 70%;
+            animation: fadeIn 0.5s ease forwards;
+            word-wrap: break-word;
+        }
+        .message.self {
+            align-self: flex-end;
+            background: rgba(208, 240, 253, 0.9);
+        }
+        .username {
+            font-weight: bold;
+            color: #ff6ec7;
+            background-color: #ffffff;
+            border-radius: 15px;
+            padding: 5px 10px;
+            margin-bottom: 5px;
+            display: inline-block;
+        }
+        .input-area {
+            margin-top: auto;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            width: 90%;
+            max-width: 1000px; /* Wider layout */
+            padding: 10px 20px;
+        }
+        #content {
+            padding: 10px;
+            border-radius: 20px;
+            border: none;
+            outline: none;
+            resize: none;
+            min-height: 50px;
+            max-height: 150px;
+            overflow-y: auto;
+            width: 80%; /* Increased input width */
+            font-family: 'Comic Sans MS', cursive, sans-serif;
+        }
+        .emoji-button {
+            font-size: 24px;
+            background: none;
+            border: none;
+            cursor: pointer;
+            transition: transform 0.2s ease;
+        }
+        .emoji-button:hover {
+            transform: scale(1.3);
+        }
+        .emoji-picker {
+            display: none;
+            background: rgba(255,255,255,0.95);
+            padding: 10px;
+            border-radius: 15px;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 5px;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.2);
+            max-width: 300px;
+            justify-content: center;
+        }
+        .emoji-picker span {
+            font-size: 24px;
+            cursor: pointer;
+            transition: transform 0.2s ease;
+        }
+        .emoji-picker span:hover {
+            transform: scale(1.3);
+        }
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 20px;
+            background-color: #ff6ec7;
+            color: white;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background-color 0.3s ease;
+        }
+        button:hover {
+            background-color: #ff2e9a;
+        }
+        @keyframes fadeIn {
+            from {opacity: 0; transform: translateY(10px);}
+            to {opacity: 1; transform: translateY(0);}
+        }
+    </style>
+</head>
+<body>
+
+<div id="chat-box"></div>
+
+<div class="input-area">
+    <button class="emoji-button" onclick="toggleEmojiPicker()">😄</button>
+    <div id="emoji-picker" class="emoji-picker">
+        <span onclick="addEmoji('😂')">😂</span>
+        <span onclick="addEmoji('🥰')">🥰</span>
+        <span onclick="addEmoji('😭')">😭</span>
+        <span onclick="addEmoji('🔥')">🔥</span>
+        <span onclick="addEmoji('💖')">💖</span>
+    </div>
+    <textarea id="content" placeholder="Type your message..."></textarea>
+    <button onclick="sendMessage()">Send</button>
+</div>
+
+<script>
+    let stompClient = null;
+    const username = sessionStorage.getItem('chatName') || prompt('Enter your name');
+    let lastSender = null;  // Variable to store the last sender
+    let lastMessageDiv = null;  // Track the last message div
+
+    if (!username) {
+        window.location.href = '/index.html';
+    }
+
+    function connect() {
+        const socket = new SockJS('/chat-websocket');
+        stompClient = Stomp.over(socket);
+        stompClient.connect({}, function (frame) {
+            console.log('Connected: ' + frame);
+            stompClient.subscribe('/topic/messages', function (messageOutput) {
+                const msg = JSON.parse(messageOutput.body);
+                showMessage(msg.sender, msg.content);
+            });
+        });
+    }
+
+    function sendMessage() {
+        const contentInput = document.getElementById('content');
+        const content = contentInput.value.trim();
+        if (content !== '') {
+            stompClient.send("/app/sendMessage", {}, JSON.stringify({'sender': username, 'content': content}));
+            contentInput.value = '';
+        }
+    }
+
+    function showMessage(sender, message) {
+        const chatBox = document.getElementById('chat-box');
+
+        if (sender === lastSender && lastMessageDiv) {
+            const messageDiv = document.createElement('div');
+            messageDiv.innerText = message;
+            lastMessageDiv.appendChild(messageDiv);
+        } else {
+            const msgDiv = document.createElement('div');
+            msgDiv.classList.add('message');
+
+            if (sender !== lastSender) {
+                const usernameDiv = document.createElement('div');
+                usernameDiv.classList.add('username');
+                usernameDiv.innerText = sender;
+                msgDiv.appendChild(usernameDiv);
+            }
+
+            const messageDiv = document.createElement('div');
+            messageDiv.innerText = message;
+            msgDiv.appendChild(messageDiv);
+
+            if (sender === username) {
+                msgDiv.classList.add('self');
+            }
+
+            chatBox.appendChild(msgDiv);
+            chatBox.scrollTop = chatBox.scrollHeight;
+
+            lastSender = sender;
+            lastMessageDiv = msgDiv;
+        }
+    }
+
+    function addEmoji(emoji) {
+        const contentInput = document.getElementById('content');
+        contentInput.value += emoji;
+        contentInput.focus();
+    }
+
+    function toggleEmojiPicker() {
+        const picker = document.getElementById('emoji-picker');
+        if (picker.style.display === 'flex') {
+            picker.style.display = 'none';
+        } else {
+            picker.style.display = 'flex';
+        }
+    }
+
+    connect();
+
+    const contentInput = document.getElementById('content');
+    contentInput.addEventListener('keydown', function (event) {
+        if (event.key === 'Enter' && !event.shiftKey) {
+            event.preventDefault();
+            sendMessage();
+        }
+    });
+</script>
+</body>
+</html>
